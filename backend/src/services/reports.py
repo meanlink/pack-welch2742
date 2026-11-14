@@ -6,12 +6,15 @@ def create(db, data):
     j=db.get(Job,data.job_id)
     if not j or j.status!='completed' or not j.approved:
         raise HTTPException(409,'请先选择已完成且获批准的分析结果')
+    if j.invalid:
+        raise HTTPException(409,'该分析依据的片段已隔离，结论已失效，不能据此安排分发')
     r=Report(name=data.name, job_id=j.id, destination=data.destination, interval_seconds=data.interval_seconds, next_run=time.time()+data.delay_seconds, enabled=True)
     db.add(r); db.flush()
     return r
 def deliver(db, report):
     j=db.get(Job,report.job_id)
-    if not j or not j.approved: return
+    # 依据失效或计划被暂停时一律不产出新文件；旧文件保留并已在隔离时标明失效
+    if not j or not j.approved or j.invalid or report.suspended: return
     out=io.StringIO()
     out.write('\ufeff')
     table=j.result.get('table',{})

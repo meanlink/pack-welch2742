@@ -4,6 +4,9 @@ from redis import Redis
 from src.config.settings import REDIS_URL
 from src.models import Dataset, Job
 from src.services.business import metadata
+from src.services.quarantine import job_input_checksum
+
+
 def create(db, data, user):
     if not db.get(Dataset,data.dataset_id): raise HTTPException(404,'数据批次不存在')
     allowed={p['key']:p for p in metadata().get('parameters',[])}
@@ -20,7 +23,11 @@ def create(db, data, user):
             except (ValueError,TypeError): raise HTTPException(422, f'{p["label"]} 超出范围或非数值')
         elif str(v) not in [str(o['value']) for o in p.get('options',[])]:
             raise HTTPException(422,f'{p["label"]} 不是有效选项')
-    j=Job(name=data.name, dataset_id=data.dataset_id, params=params, created_by=user.id, created_at=time.time(), status='queued')
+    dataset=db.get(Dataset,data.dataset_id)
+    # 指纹基于任务实际使用的有效片段，隔离变化后可逐任务追溯影响
+    checksum_value=job_input_checksum(db, Job(dataset_id=dataset.id, params=params), dataset)
+    j=Job(name=data.name, dataset_id=dataset.id, params=params, created_by=user.id,
+          created_at=time.time(), status='queued', input_checksum=checksum_value)
     db.add(j); db.flush()
     return j
 def enqueue(job_id):
