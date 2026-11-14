@@ -22,7 +22,15 @@ def create(data:ReportInput,db=Depends(get_db),u=Depends(admin_only)):
 def toggle(id:int,db=Depends(get_db),u=Depends(admin_only)):
     r=db.get(Report,id)
     if not r:raise HTTPException(404,'分发计划不存在')
-    r.enabled=not r.enabled;record(db,u.email,'report.toggle',{'id':id,'enabled':r.enabled});db.commit()
+    if r.hold_reason and not r.enabled:
+        raise HTTPException(409,'该计划因样本失效处于强制暂停，需完成重算并切换后才能恢复')
+    if r.hold_reason and r.enabled:
+        # 已切换恢复的计划允许手动暂停
+        r.enabled=False
+    else:
+        r.enabled=not r.enabled
+    if r.enabled: r.hold_reason=''
+    record(db,u.email,'report.toggle',{'id':id,'enabled':r.enabled});db.commit()
     return report_dict(r)
 @router.get('/deliveries')
 def deliveries(db=Depends(get_db),u=Depends(current_user)):
@@ -35,4 +43,5 @@ def download(id:int,format:str='csv',db=Depends(get_db),u=Depends(current_user))
     filename=d.filename+('.json' if format=='json' else '')
     p=os.path.join(ARTIFACT_DIR,filename)
     if not os.path.exists(p):raise HTTPException(404,'归档文件不存在，请重新安排分发')
+    # 失效归档仍可下载留档；失效标记随 JSON 侧车与列表返回，CSV 内容保持原样不可变
     return FileResponse(p,filename=filename,media_type='application/json' if format=='json' else 'text/csv; charset=utf-8')

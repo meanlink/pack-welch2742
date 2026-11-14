@@ -8,3 +8,11 @@ class JobStatus(str, Enum):
     running = 'running'
     completed = 'completed'
     failed = 'failed'
+    invalid = 'invalid'
+class RecalcStatus(str, Enum):
+    running = 'running'
+    waiting_approval = 'waiting_approval'
+    switched = 'switched'
+class QuarantineStatus(str, Enum):
+    active = 'active'
+    restored = 'restored'
